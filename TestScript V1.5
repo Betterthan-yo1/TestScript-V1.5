@@ -1,0 +1,487 @@
+local player = game.Players.LocalPlayer
+local char = player.Character or player.CharacterAdded:Wait()
+local humanoid = char:WaitForChild("Humanoid")
+local hrp = char:WaitForChild("HumanoidRootPart")
+
+-- UI Setup
+local screenGui = Instance.new("ScreenGui", player:WaitForChild("PlayerGui"))
+screenGui.Name = "ScriptMenu"
+screenGui.ResetOnSpawn = false
+
+-- Re-enable features after respawn
+local function resetFeatures()
+    -- Reset fly, speed, noclip status after respawn
+    flyEnabled = false
+    speedEnabled = false
+    noclipEnabled = false
+    humanoid.WalkSpeed = defaultWalkSpeed
+end
+
+-- Listen for player respawn
+player.CharacterAdded:Connect(function(newCharacter)
+    char = newCharacter
+    humanoid = char:WaitForChild("Humanoid")
+    hrp = char:WaitForChild("HumanoidRootPart")
+
+    -- Reset the UI and features after respawn
+    setupUI()
+    resetFeatures()
+end)
+
+-- Main Menu Frame (Wider)
+local menuWidth, menuHeight = 400, 500  -- Adjusted for simpler menu
+local screenWidth, screenHeight = workspace.CurrentCamera.ViewportSize.X, workspace.CurrentCamera.ViewportSize.Y  -- Get screen size
+
+local scrollFrame = Instance.new("ScrollingFrame", screenGui)
+scrollFrame.Size = UDim2.new(0, menuWidth, 0, menuHeight)
+scrollFrame.Position = UDim2.new(0, (screenWidth - menuWidth) / 2, 0, (screenHeight - menuHeight) / 2)
+scrollFrame.CanvasSize = UDim2.new(0, 0, 0, 600)
+scrollFrame.BackgroundColor3 = Color3.new(0.15, 0.15, 0.15)
+scrollFrame.Name = "MainMenu"
+scrollFrame.ScrollBarThickness = 10
+
+local yOffset = 0
+
+-- Button creation helper with padding between buttons
+local function createButton(name, callback)
+    local button = Instance.new("TextButton", scrollFrame)
+    button.Size = UDim2.new(1, -10, 0, 40)
+    button.Position = UDim2.new(0, 5, 0, yOffset)
+    button.BackgroundColor3 = Color3.new(0.2, 0.6, 1)
+    button.Text = name
+    button.TextScaled = true
+    button.TextColor3 = Color3.new(1, 1, 1)
+    button.BorderSizePixel = 0
+    button.MouseButton1Click:Connect(callback)
+    yOffset = yOffset + 45
+    scrollFrame.CanvasSize = UDim2.new(0, 0, 0, yOffset + 50)
+end
+
+-- Open Menu Button (initially hidden)
+local openButton = Instance.new("TextButton")
+openButton.Size = UDim2.new(0, 120, 0, 40)
+openButton.Position = UDim2.new(1, -130, 0, 10)  -- Top right corner with padding
+openButton.AnchorPoint = Vector2.new(0, 0)
+openButton.BackgroundColor3 = Color3.new(0, 0.6, 0)
+openButton.Text = "Open Menu"
+openButton.TextScaled = true
+openButton.TextColor3 = Color3.new(1, 1, 1)
+openButton.BorderSizePixel = 0
+openButton.Visible = false  -- Start hidden
+openButton.Parent = screenGui
+
+-- Input field creation helper for speed values with apply button
+local function createInputFieldWithApply(name, defaultValue, callback)
+    local frame = Instance.new("Frame", scrollFrame)
+    frame.Size = UDim2.new(1, -10, 0, 40)
+    frame.Position = UDim2.new(0, 5, 0, yOffset)
+    frame.BackgroundTransparency = 1
+
+    -- Input field
+    local inputField = Instance.new("TextBox", frame)
+    inputField.Size = UDim2.new(0.5, -10, 0, 40)
+    inputField.Text = tostring(defaultValue)
+    inputField.TextScaled = true
+    inputField.BackgroundColor3 = Color3.new(0.2, 0.6, 1)
+    inputField.TextColor3 = Color3.new(1, 1, 1)
+    inputField.PlaceholderText = name
+    inputField.ClearTextOnFocus = false
+    inputField.BorderSizePixel = 0
+
+    -- Apply button
+    local applyButton = Instance.new("TextButton", frame)
+    applyButton.Size = UDim2.new(0.3, 0, 1, 0)
+    applyButton.Position = UDim2.new(0.5, 5, 0, 0)
+    applyButton.BackgroundColor3 = Color3.new(0.2, 0.6, 1)
+    applyButton.Text = "Apply"
+    applyButton.TextScaled = true
+    applyButton.TextColor3 = Color3.new(1, 1, 1)
+    applyButton.BorderSizePixel = 0
+
+    -- Apply button functionality
+    applyButton.MouseButton1Click:Connect(function()
+        local value = tonumber(inputField.Text)
+        if value then
+            callback(value)
+        else
+            inputField.Text = tostring(defaultValue)  -- Reset to default if invalid input
+        end
+    end)
+
+    yOffset = yOffset + 45
+    scrollFrame.CanvasSize = UDim2.new(0, 0, 0, yOffset + 50)
+end
+
+-- Fly Variables
+local flyEnabled = false
+local flyGyro, flyVelocity = nil, nil
+local flySpeed = 100
+
+local UserInputService = game:GetService("UserInputService")
+
+local flyEnabled = false
+local flyGyro, flyVelocity = nil, nil
+local flySpeed = 100
+local movementDirection = Vector3.new(0, 0, 0)
+
+-- Set up basic controls for flying (W, A, S, D, Space, Shift)
+local function handleFlyMovement()
+    local moveDirection = Vector3.new(0, 0, 0)
+
+    if UserInputService:IsKeyDown(Enum.KeyCode.W) then
+        moveDirection = moveDirection + workspace.CurrentCamera.CFrame.LookVector
+    end
+    if UserInputService:IsKeyDown(Enum.KeyCode.S) then
+        moveDirection = moveDirection - workspace.CurrentCamera.CFrame.LookVector
+    end
+    if UserInputService:IsKeyDown(Enum.KeyCode.A) then
+        moveDirection = moveDirection - workspace.CurrentCamera.CFrame.RightVector
+    end
+    if UserInputService:IsKeyDown(Enum.KeyCode.D) then
+        moveDirection = moveDirection + workspace.CurrentCamera.CFrame.RightVector
+    end
+    if UserInputService:IsKeyDown(Enum.KeyCode.Space) then
+        moveDirection = moveDirection + Vector3.new(0, 1, 0)  -- Move up
+    end
+    if UserInputService:IsKeyDown(Enum.KeyCode.LeftShift) then
+        moveDirection = moveDirection - Vector3.new(0, 1, 0)  -- Move down
+    end
+
+    -- Normalize the direction vector to avoid speeding up diagonally
+    if moveDirection.Magnitude > 0 then
+        moveDirection = moveDirection.Unit * flySpeed
+    end
+
+    -- Apply the movement to the BodyVelocity (this will make the character move in the right direction)
+    flyVelocity.Velocity = moveDirection
+end
+
+-- Toggle Fly function
+local function toggleFly()
+    if flyEnabled then
+        -- Stop Fly
+        flyEnabled = false
+        if flyGyro then flyGyro:Destroy() flyGyro = nil end
+        if flyVelocity then flyVelocity:Destroy() flyVelocity = nil end
+    else
+        -- Start Fly
+        flyEnabled = true
+        local char = game.Players.LocalPlayer.Character
+        local hrp = char:WaitForChild("HumanoidRootPart")
+
+        flyGyro = Instance.new("BodyGyro", hrp)
+        flyGyro.P = 9e4
+        flyGyro.MaxTorque = Vector3.new(9e9, 9e9, 9e9)
+        flyGyro.CFrame = hrp.CFrame
+
+        flyVelocity = Instance.new("BodyVelocity", hrp)
+        flyVelocity.MaxForce = Vector3.new(9e9, 9e9, 9e9)
+        flyVelocity.Velocity = Vector3.new(0, 0, 0)  -- Initially stationary
+        flyVelocity.Parent = hrp
+
+        -- Keep the camera aligned to the player while flying
+        game:GetService("RunService").RenderStepped:Connect(function()
+            if flyEnabled then
+                -- Maintain the orientation of the character based on the camera
+                flyGyro.CFrame = workspace.CurrentCamera.CFrame
+                handleFlyMovement()  -- Update movement
+            end
+        end)
+    end
+end
+
+-- Call this function to toggle flight on or off
+toggleFly()
+-- Speed
+local defaultWalkSpeed = humanoid.WalkSpeed
+local speedEnabled = false
+local customSpeed = 100
+
+local function startSpeed()
+    if not speedEnabled then
+        humanoid.WalkSpeed = customSpeed
+        speedEnabled = true
+    end
+end
+
+local function stopSpeed()
+    if speedEnabled then
+        humanoid.WalkSpeed = defaultWalkSpeed
+        speedEnabled = false
+    end
+end
+
+-- Noclip
+local noclipEnabled = false
+
+local function onStepped()
+    if noclipEnabled then
+        for _, part in ipairs(char:GetDescendants()) do
+            if part:IsA("BasePart") and part.CanCollide then
+                part.CanCollide = false
+            end
+        end
+    end
+end
+
+game:GetService("RunService").Stepped:Connect(onStepped)
+
+local function startNoclip()
+    noclipEnabled = true
+end
+
+local function stopNoclip()
+    noclipEnabled = false
+    for _, part in ipairs(char:GetDescendants()) do
+        if part:IsA("BasePart") then
+            part.CanCollide = true
+        end
+    end
+end
+
+-- ESP Functionality
+local espEnabled = false
+local espParts = {}
+
+local function toggleESP()
+    espEnabled = not espEnabled
+    if espEnabled then
+        -- Create ESP for all players
+        for _, otherPlayer in ipairs(game.Players:GetPlayers()) do
+            if otherPlayer.Character and otherPlayer.Character:FindFirstChild("Head") then
+                local espBox = Instance.new("BillboardGui")
+                espBox.Adornee = otherPlayer.Character:FindFirstChild("Head")
+                espBox.Size = UDim2.new(0, 200, 0, 50)
+                espBox.StudsOffset = Vector3.new(0, 2, 0)
+                espBox.AlwaysOnTop = true
+                espBox.Parent = screenGui
+
+                local label = Instance.new("TextLabel")
+                label.Size = UDim2.new(1, 0, 1, 0)
+                label.BackgroundTransparency = 1
+                label.Text = otherPlayer.Name
+                label.TextColor3 = Color3.new(0, 0, 1)
+                label.TextScaled = true
+                label.Parent = espBox
+
+                -- Create a SelectionBox for glowing effect (blue glow)
+                local highlight = Instance.new("SelectionBox")
+                highlight.Adornee = otherPlayer.Character
+                highlight.Color3 = Color3.new(0, 0, 1)
+                highlight.LineThickness = 0.1
+                highlight.SurfaceTransparency = 0.5
+                highlight.Parent = screenGui
+
+                -- Add ESP and highlight to table for cleanup later
+                table.insert(espParts, espBox)
+                table.insert(espParts, highlight)
+            end
+        end
+    else
+        -- Remove ESP parts when turning off
+        for _, espPart in ipairs(espParts) do
+            if espPart and espPart.Parent then
+                espPart:Destroy()
+            end
+        end
+        espParts = {}
+    end
+end
+
+--  SPIN FEATURE  --
+local spinEnabled = false
+local spinAngular = nil
+local spinSpeed = 10
+
+local function startSpin()
+    if not spinEnabled then
+        spinAngular = Instance.new("BodyAngularVelocity", hrp)
+        spinAngular.AngularVelocity = Vector3.new(0, math.rad(spinSpeed), 0)
+        spinAngular.MaxTorque = Vector3.new(0, math.huge, 0)
+        spinAngular.P = 1250
+        spinEnabled = true
+    end
+end
+
+local function stopSpin()
+    if spinEnabled and spinAngular then
+        spinAngular:Destroy()
+        spinAngular = nil
+        spinEnabled = false
+    end
+end
+
+createInputFieldWithApply("Spin Speed", spinSpeed, function(value)
+    spinSpeed = value
+    if spinEnabled and spinAngular then
+        spinAngular.AngularVelocity = Vector3.new(0, math.rad(spinSpeed), 0)
+    end
+end)
+
+createButton("Spin (on/off)", function()
+    if spinEnabled then
+        stopSpin()
+    else
+        startSpin()
+    end
+end)
+
+-- Fling button setup
+local flingEnabled = false
+local flingAngular = nil
+
+-- Function to start fling (noclip + rotation)
+local function startFling()
+    if not flingEnabled then
+        -- Enable noclip
+        noclipEnabled = true
+        for _, part in ipairs(char:GetDescendants()) do
+            if part:IsA("BasePart") then
+                part.CanCollide = false
+            end
+        end
+
+        -- Apply continuous rotation (2000 RPM = ~209.44 rad/s)
+        local hrp = char:WaitForChild("HumanoidRootPart")
+
+        flingAngular = Instance.new("BodyAngularVelocity", hrp)
+        flingAngular.AngularVelocity = Vector3.new(0, math.rad(200000), 0)
+        flingAngular.MaxTorque = Vector3.new(0, math.huge, 0)
+        flingAngular.P = 1250
+
+        flingEnabled = true
+    end
+end
+
+-- Function to stop fling (disable noclip + rotation)
+local function stopFling()
+    if flingEnabled then
+        -- Disable noclip
+        noclipEnabled = false
+        for _, part in ipairs(char:GetDescendants()) do
+            if part:IsA("BasePart") then
+                part.CanCollide = true
+            end
+        end
+
+        -- Stop rotation
+        if flingAngular then
+            flingAngular:Destroy()
+            flingAngular = nil
+        end
+
+        flingEnabled = false
+    end
+end
+-- Create the Fling button
+local function createFlingButton()
+    local flingButton = Instance.new("TextButton", scrollFrame)
+    flingButton.Size = UDim2.new(1, -10, 0, 40)
+    flingButton.Position = UDim2.new(0, 5, 0, yOffset)
+    flingButton.BackgroundColor3 = Color3.new(0, 0, 1)
+    flingButton.Text = "Fling (on/off)"
+    flingButton.TextScaled = true
+    flingButton.TextColor3 = Color3.new(1, 1, 1)
+    flingButton.BorderSizePixel = 0
+
+    flingButton.MouseButton1Click:Connect(function()
+        if flingEnabled then
+            stopFling()
+        else
+            startFling()
+        end
+    end)
+
+    yOffset = yOffset + 45
+    scrollFrame.CanvasSize = UDim2.new(0, 0, 0, yOffset + 50)
+end
+
+-- Call the function to create the fling button
+createFlingButton()
+
+-- Add buttons and inputs for all features (Fly, Speed, Noclip, ESP)
+
+createButton("Fly (on/off)", function()
+    toggleFly()
+end)
+
+createInputFieldWithApply("Fly Speed", flySpeed, function(value)
+    flySpeed = value
+end)
+
+createButton("Speed (on/off)", function()
+    if speedEnabled then
+        stopSpeed()
+    else
+        startSpeed()
+    end
+end)
+
+createInputFieldWithApply("Walk Speed", customSpeed, function(value)
+    customSpeed = value
+end)
+
+createButton("Noclip (on/off)", function()
+    if noclipEnabled then
+        stopNoclip()
+    else
+        startNoclip()
+    end
+end)
+
+createButton("Toggle ESP (on/off)", toggleESP)
+
+-- Open Menu Button (positioned at bottom center)
+local openButton = Instance.new("TextButton")
+openButton.Size = UDim2.new(0, 120, 0, 40)
+openButton.Position = UDim2.new(0.5, 0, 1, -70)  -- Bottom center with padding
+openButton.AnchorPoint = Vector2.new(0.5, 1)  -- Anchor to center the button
+openButton.BackgroundColor3 = Color3.new(0, 0, 1)
+openButton.Text = "Open Menu"
+openButton.TextScaled = true
+openButton.TextColor3 = Color3.new(1, 1, 1)
+openButton.BorderSizePixel = 0
+openButton.Visible = false  -- Start hidden
+openButton.Parent = screenGui
+
+-- CLOSE MENU BUTTON (inside scrollFrame)
+local closeButton = Instance.new("TextButton", scrollFrame)
+closeButton.Size = UDim2.new(1, -10, 0, 40)
+closeButton.Position = UDim2.new(0, 5, 0, yOffset)
+closeButton.BackgroundColor3 = Color3.new(1, 0, 0)
+closeButton.Text = "Close Menu"
+closeButton.TextScaled = true
+closeButton.TextColor3 = Color3.new(1, 1, 1)
+closeButton.BorderSizePixel = 0
+
+-- On Close: hide menu, show open button
+closeButton.MouseButton1Click:Connect(function()
+    scrollFrame.Visible = false
+    openButton.Visible = true
+end)
+
+-- On Open: show menu, hide open button
+openButton.MouseButton1Click:Connect(function()
+    scrollFrame.Visible = true
+    openButton.Visible = false
+end)
+
+-- Update canvas to fit the close button
+yOffset = yOffset + 45
+scrollFrame.CanvasSize = UDim2.new(0, 0, 0, yOffset + 50)
+
+-- After your buttons and inputs, add this:
+
+-- Add footer text (TestScript V1.4)
+local footerText = Instance.new("TextLabel", scrollFrame)
+footerText.Size = UDim2.new(1, 0, 0, 30)  -- Full width of the scroll frame, 30px height
+footerText.Position = UDim2.new(0, 0, 1, -40)  -- 40px from the bottom of the scroll frame
+footerText.BackgroundTransparency = 1  -- No background
+footerText.Text = "TestScript V1.5"
+footerText.TextColor3 = Color3.new(1, 1, 1)  -- White text
+footerText.TextScaled = true
+footerText.TextAlign = Enum.TextAnchor.MiddleCenter
+
+-- Update scrollFrame canvas size to fit the footer
+yOffset = yOffset + 45  -- The previous yOffset used for button placement
+scrollFrame.CanvasSize = UDim2.new(0, 0, 0, yOffset + 30 + 50)  -- Adding space for footer
